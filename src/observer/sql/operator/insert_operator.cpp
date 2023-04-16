@@ -19,10 +19,10 @@ See the Mulan PSL v2 for more details. */
 #include <cstddef>
 
 RC InsertOperator::open()
-{
-  Table *table = insert_stmt_->table();
-  TArray values = insert_stmt_->values();
-  const size_t* value_amount = insert_stmt_->value_amount();
+{//好像没有用，先隐掉
+  // Table *table = insert_stmt_->table();
+  // TArray values = insert_stmt_->values();
+  // const size_t* value_amount = insert_stmt_->value_amount();
   return RC::IOERR;// table->insert_record(nullptr, value_amount, values); // TODO trx
 }
 
