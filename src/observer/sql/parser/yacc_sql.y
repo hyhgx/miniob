@@ -16,10 +16,12 @@ typedef struct ParserContext {
   size_t condition_length;
   size_t from_length;
   size_t value_length;
-  Value values[MAX_NUM];
+  size_t length[MAX_NUM];
+  size_t value_row;//行数
+  Value values[MAX_NUM][MAX_NUM];//改成二维数据
   Condition conditions[MAX_NUM];
   CompOp comp;
-	char id[MAX_NUM];
+  char id[MAX_NUM];
 } ParserContext;
 
 //获取子串
@@ -43,7 +45,7 @@ void yyerror(yyscan_t scanner, const char *str)
   context->from_length = 0;
   context->select_length = 0;
   context->value_length = 0;
-  context->ssql->sstr.insertion.value_num = 0;
+  context->ssql->sstr.insertion.row_num = 0;
   printf("parse sql failed. error=%s", str);
 }
 
@@ -277,9 +279,9 @@ ID_get:
 	}
 	;
 
-	
+
 insert:				/*insert   语句的语法解析树*/
-    INSERT INTO ID VALUES LBRACE value value_list RBRACE SEMICOLON 
+    INSERT INTO ID VALUES inserts cinsert SEMICOLON 
 		{
 			// CONTEXT->values[CONTEXT->value_length++] = *$6;
 
@@ -289,11 +291,25 @@ insert:				/*insert   语句的语法解析树*/
 			// for(i = 0; i < CONTEXT->value_length; i++){
 			// 	CONTEXT->ssql->sstr.insertion.values[i] = CONTEXT->values[i];
       // }
-			inserts_init(&CONTEXT->ssql->sstr.insertion, $3, CONTEXT->values, CONTEXT->value_length);
-
+		inserts_init(&CONTEXT->ssql->sstr.insertion, $3, CONTEXT->values, CONTEXT->length,CONTEXT->value_row);
       //临时变量清零
-      CONTEXT->value_length=0;
+      	CONTEXT->value_length=0;
+	  	CONTEXT->value_row=0;
     }
+
+inserts://做这个动作说明出现一行记录。
+	//empty
+	| LBRACE value value_list RBRACE {
+		CONTEXT->length[CONTEXT->value_row]=CONTEXT->value_length;
+		CONTEXT->value_row++;
+		CONTEXT->value_length=0;
+	};
+cinsert:
+//empty
+	| COMMA inserts cinsert
+	{
+		//donothing
+	};
 
 value_list:
     /* empty */
@@ -303,14 +319,14 @@ value_list:
     ;
 value:
     NUMBER{	
-  		value_init_integer(&CONTEXT->values[CONTEXT->value_length++], $1);
+  		value_init_integer(&CONTEXT->values[CONTEXT->value_row][CONTEXT->value_length++], $1);
 		}
     |FLOAT{
-  		value_init_float(&CONTEXT->values[CONTEXT->value_length++], $1);
+  		value_init_float(&CONTEXT->values[CONTEXT->value_row][CONTEXT->value_length++], $1);
 		}
     |SSS {
 			$1 = substr($1,1,strlen($1)-2);
-  		value_init_string(&CONTEXT->values[CONTEXT->value_length++], $1);
+  		value_init_string(&CONTEXT->values[CONTEXT->value_row][CONTEXT->value_length++], $1);
 		}
     ;
     

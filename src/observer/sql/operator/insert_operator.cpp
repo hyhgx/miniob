@@ -16,13 +16,14 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/insert_stmt.h"
 #include "storage/common/table.h"
 #include "rc.h"
+#include <cstddef>
 
 RC InsertOperator::open()
 {
   Table *table = insert_stmt_->table();
-  const Value *values = insert_stmt_->values();
-  int value_amount = insert_stmt_->value_amount();
-  return table->insert_record(nullptr, value_amount, values); // TODO trx
+  TArray values = insert_stmt_->values();
+  const size_t* value_amount = insert_stmt_->value_amount();
+  return RC::IOERR;// table->insert_record(nullptr, value_amount, values); // TODO trx
 }
 
 RC InsertOperator::next()

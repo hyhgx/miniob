@@ -15,17 +15,19 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include "rc.h"
+#include "sql/parser/parse_defs.h"
 #include "sql/stmt/stmt.h"
+#include <cstddef>
 
 class Table;
 class Db;
-
+using TArray=const Value (*)[MAX_NUM];
 class InsertStmt : public Stmt
 {
 public:
 
   InsertStmt() = default;
-  InsertStmt(Table *table, const Value *values, int value_amount);
+  InsertStmt(Table *table, TArray values, const size_t* value_amount,size_t row);
 
   StmtType type() const override {
     return StmtType::INSERT;
@@ -35,12 +37,14 @@ public:
 
 public:
   Table *table() const {return table_;}
-  const Value *values() const { return values_; }
-  int value_amount() const { return value_amount_; }
+  TArray values() const { return values_; }
+  const size_t* value_amount() const { return value_amount_; }
+  size_t return_row() const{return value_row;}
 
 private:
   Table *table_ = nullptr;
-  const Value *values_ = nullptr;
-  int value_amount_ = 0;
+  TArray values_= nullptr;
+  const size_t *value_amount_=nullptr;
+  size_t value_row = 0;
 };
 

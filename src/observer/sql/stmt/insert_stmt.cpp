@@ -14,53 +14,57 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/stmt/insert_stmt.h"
 #include "common/log/log.h"
+#include "sql/parser/parse_defs.h"
 #include "storage/common/db.h"
 #include "storage/common/table.h"
+#include <cstddef>
 
-InsertStmt::InsertStmt(Table *table, const Value *values, int value_amount)
-  : table_ (table), values_(values), value_amount_(value_amount)
+InsertStmt::InsertStmt(Table *table, TArray values, const size_t* value_amount,size_t row_num)
+  : table_ (table), values_(values), value_amount_(value_amount),value_row(row_num)
 {}
 
 RC InsertStmt::create(Db *db, const Inserts &inserts, Stmt *&stmt)
 {
   const char *table_name = inserts.relation_name;
-  if (nullptr == db || nullptr == table_name || inserts.value_num <= 0) {
+  if (nullptr == db || nullptr == table_name || inserts.row_num <= 0) {
     LOG_WARN("invalid argument. db=%p, table_name=%p, value_num=%d", 
-             db, table_name, inserts.value_num);
+             db, table_name, inserts.row_num);
     return RC::INVALID_ARGUMENT;
   }
 
   // check whether the table exists
   Table *table = db->find_table(table_name);
-  if (nullptr == table) {
+  if (nullptr == table) {//查询无此表
     LOG_WARN("no such table. db=%s, table_name=%s", db->name(), table_name);
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
   // check the fields number
-  const Value *values = inserts.values;
-  const int value_num = inserts.value_num;
+  const Value (*values)[MAX_NUM]= inserts.values;
+  const size_t *value_num= inserts.value_num;
   const TableMeta &table_meta = table->table_meta();
-  const int field_num = table_meta.field_num() - table_meta.sys_field_num();
-  if (field_num != value_num) {
-    LOG_WARN("schema mismatch. value num=%d, field num in schema=%d", value_num, field_num);
-    return RC::SCHEMA_FIELD_MISSING;
+  const int field_num = table_meta.field_num() - table_meta.sys_field_num();//得到表项个数
+for(int k=0;k>inserts.row_num;k++){
+  if (field_num != value_num[k]) {
+      LOG_WARN("schema mismatch. value num=%d, field num in schema=%d", value_num[k], field_num);
+      return RC::SCHEMA_FIELD_MISSING;
   }
-
+}
   // check fields type
   const int sys_field_num = table_meta.sys_field_num();
-  for (int i = 0; i < value_num; i++) {
-    const FieldMeta *field_meta = table_meta.field(i + sys_field_num);
-    const AttrType field_type = field_meta->type();
-    const AttrType value_type = values[i].type;
-    if (field_type != value_type) { // TODO try to convert the value type to field type
-      LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d", 
+  for(int m=0;m<inserts.row_num;m++){
+    for (int i = 0; i < value_num[m]; i++) {
+        const FieldMeta *field_meta = table_meta.field(i + sys_field_num);
+        const AttrType field_type = field_meta->type();
+        const AttrType value_type = values[m][i].type;
+        if (field_type != value_type) { // TODO try to convert the value type to field type
+          LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d", 
                table_name, field_meta->name(), field_type, value_type);
-      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-    }
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        }
+      }
   }
-
   // everything alright
-  stmt = new InsertStmt(table, values, value_num);
+  stmt = new InsertStmt(table, values,value_num, inserts.row_num);
   return RC::SUCCESS;
 }

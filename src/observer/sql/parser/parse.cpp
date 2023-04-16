@@ -12,10 +12,13 @@ See the Mulan PSL v2 for more details. */
 // Created by Meiyi 
 //
 
+#include <cstddef>
 #include <mutex>
 #include "sql/parser/parse.h"
 #include "rc.h"
 #include "common/log/log.h"
+#include "sql/parser/parse_defs.h"
+
 
 RC parse(char *st, Query *sqln);
 
@@ -146,25 +149,33 @@ void selects_destroy(Selects *selects)
   selects->condition_num = 0;
 }
 
-void inserts_init(Inserts *inserts, const char *relation_name, Value values[], size_t value_num)
-{
-  assert(value_num <= sizeof(inserts->values) / sizeof(inserts->values[0]));
-
-  inserts->relation_name = strdup(relation_name);
-  for (size_t i = 0; i < value_num; i++) {
-    inserts->values[i] = values[i];
+void inserts_init(Inserts *inserts, const char *relation_name,Value values[MAX_NUM][MAX_NUM], size_t value_num[MAX_NUM],size_t row_num)
+{ //判断是否小于MAX_NUM 20
+  for(size_t j=0;j<row_num;j++){
+      assert(value_num[j] <=MAX_NUM);     // sizeof(inserts->values) / sizeof(inserts->values[0]));
   }
-  inserts->value_num = value_num;
+  inserts->relation_name = strdup(relation_name);
+  for(size_t k=0;k<row_num;k++){
+    for (size_t i = 0; i < value_num[k]; i++) {
+      inserts->values[k][i] = values[k][i];
+    }
+  }
+  for(int m=0; m<row_num; m++){
+    inserts->value_num[m] = value_num[m];
+  }
+  inserts->row_num=row_num;
 }
 void inserts_destroy(Inserts *inserts)
 {
   free(inserts->relation_name);
   inserts->relation_name = nullptr;
-
-  for (size_t i = 0; i < inserts->value_num; i++) {
-    value_destroy(&inserts->values[i]);
+  for(size_t j=0;j<inserts->row_num; j++){
+      for (size_t i = 0; i < inserts->value_num[j]; i++) {
+        value_destroy(&inserts->values[j][i]);
+      }
+      inserts->value_num[j] = 0;
   }
-  inserts->value_num = 0;
+  inserts->row_num=0;
 }
 
 void deletes_init_relation(Deletes *deletes, const char *relation_name)

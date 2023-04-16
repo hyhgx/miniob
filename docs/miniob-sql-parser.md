@@ -22,7 +22,7 @@ bison -d -b yacc_sql yacc_sql.y
 
 注意：flex 使用 2.5.35 版本测试通过，bison使用**3.7**版本测试通过(请不要使用旧版本，比如macos自带的bision）。
 
-注意：当前没有把lex_sql.l和yacc_sql.y加入CMakefile.txt中，所以修改这两个文件后，需要手动生成c代码，然后再执行编译。
+注意：当前没有把lex_sql.l和yacc_sql.y加入CMakefile.txt中，所以修改这两个文件后，需要手动生成c代码，然后再执行编译。bison -d -b yacc_sql yacc_sql.y
 
 # 如何调试词法分析和语法分析模块
 

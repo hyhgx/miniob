@@ -12,6 +12,7 @@ See the Mulan PSL v2 for more details. */
 // Created by Meiyi & Longda on 2021/4/13.
 //
 
+#include <cstddef>
 #include <string>
 #include <sstream>
 
@@ -543,8 +544,14 @@ RC ExecuteStage::do_insert(SQLStageEvent *sql_event)
 
   InsertStmt *insert_stmt = (InsertStmt *)stmt;
   Table *table = insert_stmt->table();
-
-  RC rc = table->insert_record(trx, insert_stmt->value_amount(), insert_stmt->values());
+  RC rc=RC::IOERR_ROLLBACK_ATOMIC;
+  for(size_t k=0;k<insert_stmt->return_row();k++){
+     rc = table->insert_record(trx, insert_stmt->value_amount()[k], insert_stmt->values()[k]);
+     if(rc!=RC::SUCCESS){
+      break;
+     }
+        
+  }
   if (rc == RC::SUCCESS) {
     if (!session->is_trx_multi_operation_mode()) {
       CLogRecord *clog_record = nullptr;
