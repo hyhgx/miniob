@@ -1,8 +1,10 @@
+./build
+.cache/*
 ./deps/libevent
 ./deps/googletest
 ./deps/jsoncpp
 build/*
-cmake-build-*/*
+cmake-build-*/*s
 .vscode/*
 .DS_Store
 .idea
@@ -17,3 +19,6 @@ GRTAGS
 GPATH
 GTAGS
 #*#
+
+miniob
+observer.log.*

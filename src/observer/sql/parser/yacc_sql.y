@@ -283,7 +283,7 @@ insert:				/*insert   语句的语法解析树*/
 		{
 			// CONTEXT->values[CONTEXT->value_length++] = *$6;
 
-			CONTEXT->ssql->flag=SCF_INSERT;//"insert";
+			CONTEXT->ssql->flag=SCF_INSERT;//"insert";//定义是属于啥类型操作
 			// CONTEXT->ssql->sstr.insertion.relation_name = $3;
 			// CONTEXT->ssql->sstr.insertion.value_num = CONTEXT->value_length;
 			// for(i = 0; i < CONTEXT->value_length; i++){

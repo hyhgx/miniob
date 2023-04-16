@@ -467,7 +467,7 @@ RC ExecuteStage::do_create_table(SQLStageEvent *sql_event)
 {
   const CreateTable &create_table = sql_event->query()->sstr.create_table;
   SessionEvent *session_event = sql_event->session_event();
-  Db *db = session_event->session()->get_current_db();
+  Db *db = session_event->session()->get_current_db();//得到当前数据库
   RC rc = db->create_table(create_table.relation_name,
 			create_table.attribute_count, create_table.attributes);
   if (rc == RC::SUCCESS) {
