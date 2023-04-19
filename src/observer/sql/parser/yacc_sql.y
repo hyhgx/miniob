@@ -18,7 +18,8 @@ typedef struct ParserContext {
   size_t value_length;
   size_t length[MAX_NUM];
   size_t value_row;//行数
-  Value values[MAX_NUM][MAX_NUM];//改成二维数据
+  Value values[MAX_NUM];//原values；
+  Value insert_values[MAX_NUM][MAX_NUM];//改成二维数据
   Condition conditions[MAX_NUM];
   CompOp comp;
   char id[MAX_NUM];
@@ -238,7 +239,7 @@ attr_def_list:
     /* empty */
     | COMMA attr_def attr_def_list {    }
     ;
-    
+
 attr_def:
     ID_get type LBRACE number RBRACE 
 		{
@@ -291,7 +292,7 @@ insert:				/*insert   语句的语法解析树*/
 			// for(i = 0; i < CONTEXT->value_length; i++){
 			// 	CONTEXT->ssql->sstr.insertion.values[i] = CONTEXT->values[i];
       // }
-		inserts_init(&CONTEXT->ssql->sstr.insertion, $3, CONTEXT->values, CONTEXT->length,CONTEXT->value_row);
+		inserts_init(&CONTEXT->ssql->sstr.insertion, $3, CONTEXT->insert_values, CONTEXT->length,CONTEXT->value_row);
       //临时变量清零
       	CONTEXT->value_length=0;
 	  	CONTEXT->value_row=0;
@@ -299,7 +300,7 @@ insert:				/*insert   语句的语法解析树*/
 
 inserts://做这个动作说明出现一行记录。
 	//empty
-	| LBRACE value value_list RBRACE {
+	| LBRACE insert_value value_list RBRACE {
 		CONTEXT->length[CONTEXT->value_row]=CONTEXT->value_length;
 		CONTEXT->value_row++;
 		CONTEXT->value_length=0;
@@ -313,23 +314,34 @@ cinsert:
 
 value_list:
     /* empty */
-    | COMMA value value_list  { 
+    | COMMA insert_value value_list  { 
   		// CONTEXT->values[CONTEXT->value_length++] = *$2;
 	  }
     ;
-value:
+insert_value:
     NUMBER{	
-  		value_init_integer(&CONTEXT->values[CONTEXT->value_row][CONTEXT->value_length++], $1);
+  		value_init_integer(&CONTEXT->insert_values[CONTEXT->value_row][CONTEXT->value_length++], $1);
 		}
     |FLOAT{
-  		value_init_float(&CONTEXT->values[CONTEXT->value_row][CONTEXT->value_length++], $1);
+  		value_init_float(&CONTEXT->insert_values[CONTEXT->value_row][CONTEXT->value_length++], $1);
 		}
     |SSS {
 			$1 = substr($1,1,strlen($1)-2);
-  		value_init_string(&CONTEXT->values[CONTEXT->value_row][CONTEXT->value_length++], $1);
+  		value_init_string(&CONTEXT->insert_values[CONTEXT->value_row][CONTEXT->value_length++], $1);
 		}
     ;
-    
+value: 
+ 	NUMBER{	
+  		value_init_integer(&CONTEXT->values[CONTEXT->value_length++], $1);
+		}
+    |FLOAT{
+  		value_init_float(&CONTEXT->values[CONTEXT->value_length++], $1);
+		}
+    |SSS {
+			$1 = substr($1,1,strlen($1)-2);
+  		value_init_string(&CONTEXT->values[CONTEXT->value_length++], $1);
+		}
+    ;
 delete:		/*  delete 语句的语法解析树*/
     DELETE FROM ID where SEMICOLON 
 		{

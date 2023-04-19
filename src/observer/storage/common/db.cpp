@@ -59,7 +59,23 @@ RC Db::init(const char *name, const char *dbpath)
 
   return open_all_tables();
 }
-
+RC Db::drop_table(const char *table_name){
+  RC rc=RC::SUCCESS;
+  if(opened_tables_.count(table_name)==0){//map对象，<NAME,TABLE>
+    LOG_WARN("%s table not extist",table_name);
+      return RC::SCHEMA_TABLE_NOT_EXIST;
+  }
+  Table *table = opened_tables_[table_name];//得到表对象
+  rc=table->remove(table_name);//Table类内等待实现
+  if(rc!=RC::SUCCESS){
+    
+    LOG_WARN("Failed to drop table %s",table_name);
+    return rc;
+  }
+  opened_tables_.erase(std::string(table_name));
+  LOG_WARN("Drop table success%s",table_name);
+  return RC::SUCCESS;
+}
 RC Db::create_table(const char *table_name, int attribute_count, const AttrInfo *attributes)
 {
   RC rc = RC::SUCCESS;

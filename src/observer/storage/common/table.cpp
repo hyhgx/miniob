@@ -12,9 +12,13 @@ See the Mulan PSL v2 for more details. */
 // Created by Meiyi & Wangyunlai on 2021/5/13.
 //
 
+#include <cassert>
+#include <cerrno>
+#include <cstddef>
 #include <limits.h>
 #include <string.h>
 #include <algorithm>
+#include <unistd.h>
 
 #include "common/defs.h"
 #include "storage/common/table.h"
@@ -50,7 +54,49 @@ Table::~Table()
 
   LOG_INFO("Table has been closed: %s", name());
 }
+RC Table::remove(const char* name){
+  if(common::is_blank(name)){
+    LOG_WARN("Name cannot be empty");
+    return RC::INVALID_ARGUMENT;
+  }
+  //该函数能够将 string 字符串转换为C风格的字符串，并返回该字符串的 const 指针（const char*）
+  LOG_INFO("Begin to remove table %s %s",base_dir_.c_str(),name);
+  //remove the relevant index files
+  for (auto idx: indexes_){
+    //得到删除索引文件路径
+    std::string index_file=table_index_file(base_dir_.c_str(), name, idx->index_meta().name());
+    delete idx;
+    if(0!=::unlink(index_file.c_str())){
+      LOG_ERROR("Delete index file failed. filename=%s,errmsg=%d:%s",index_file.c_str(),errno,strerror(errno));
+      return RC::IOERR;
+    }
+  }
+  indexes_.clear();
+  //clean relevant resources
+  //关闭表数据文件句柄
+  assert(nullptr!=record_handler_);
+  record_handler_->close();
+  delete record_handler_;
+  record_handler_=nullptr;
 
+  assert(nullptr!=data_buffer_pool_);
+  data_buffer_pool_->close_file();
+  data_buffer_pool_=nullptr;
+
+  //remove the data file
+  std::string data_file=table_data_file(base_dir_.c_str(), name);
+  if(0!=::unlink(data_file.c_str())){
+    LOG_ERROR("Delete data file failed. filename=%s,errmsg=%d:%s",data_file.c_str(),errno,strerror(errno));
+    return RC::IOERR;
+  }
+  //remove the mata file 
+  std::string meta_file=table_meta_file(base_dir_.c_str(), name);
+  if(0!=::unlink(meta_file.c_str())){
+    LOG_ERROR("Delete meta file failed. filename=%s,errmsg=%d:%s",meta_file.c_str(),errno,strerror(errno));
+    return RC::IOERR;
+  }
+  return RC::SUCCESS;
+}
 RC Table::create(
     const char *path, const char *name, const char *base_dir, int attribute_count, const AttrInfo attributes[], CLogManager *clog_manager)
 {
@@ -88,7 +134,7 @@ RC Table::create(
     return rc;  // delete table file
   }
 
-  std::fstream fs;
+  std::fstream fs; 
   fs.open(path, std::ios_base::out | std::ios_base::binary);
   if (!fs.is_open()) {
     LOG_ERROR("Failed to open file for write. file name=%s, errmsg=%s", path, strerror(errno));
@@ -316,6 +362,10 @@ RC Table::insert_record(Trx *trx, int value_num, const Value *values)
   Record record;
   record.set_data(record_data);
   rc = insert_record(trx, &record);
+  if(rc==RC::SUCCESS){
+    insert_records.push_back(record);
+  }
+  // rc=delete_record(trx,&record);
   delete[] record_data;
   return rc;
 }
@@ -638,6 +688,106 @@ RC Table::create_index(Trx *trx, const char *index_name, const char *attribute_n
   return rc;
 }
 
+RC Table::update_record(Trx *trx, Record *record, const char *attribute_name, const Value *values)
+{
+  RC rc = RC::SUCCESS;
+  char *old_data = record->data();
+  char *now_data = record->data();
+  const FieldMeta *field = table_meta_.field(attribute_name);
+  const Value &value = values[0];
+  //更新值的类型检查，若不符合则不更新
+  if(field->type()!=value.type){
+    LOG_ERROR("Invalid value type. table name =%s, field name=%s, type=%d, but given=%d",
+        table_meta_.name(),
+        field->name(),
+        field->type(),
+        value.type);
+    return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+  }
+
+  size_t copy_len = field->len();
+  
+  if (field->type() == CHARS) {
+    const size_t data_len = strlen((const char *)value.data);
+    if (copy_len > data_len) {
+      copy_len = data_len + 1;
+    }
+  }
+  memcpy(now_data + field->offset(), value.data, copy_len);
+  record->set_data(now_data);
+
+
+  rc = record_handler_->update_record(record);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to update record (rid=%d.%d). rc=%d:%s",
+                record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+    return rc;
+  }
+
+  //若行更新成功则维护更新索引
+  for (Index *index : indexes_){
+    LOG_INFO("filed_name of index=%s, attribute_name=%s", index->index_meta().field(), attribute_name);
+    if(0 == strcmp(index->index_meta().field(), attribute_name)){
+      if(RC::SUCCESS==index->insert_entry(record->data(), &record->rid())){
+        if(RC::SUCCESS==index->delete_entry(old_data, &record->rid())){
+          LOG_INFO("Succeed to update index (filed_meta=%s) of record (rid=%d.%d). rc=%d:%s",
+                index->index_meta().field(), record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+        }
+      }
+    }
+  }
+
+  return rc;
+}
+// RC Table::update_record(Trx *trx, Record *record, const char *attribute_name, const Value *values)
+// {
+//   RC rc = RC::SUCCESS;
+//   char *old_data = record->data();
+//   char *now_data = record->data();//浅复制
+//   const FieldMeta *field = table_meta_.field(attribute_name);
+//   const Value &value = values[0];
+//   //更新值的类型检查，若不符合则不更新
+//   if(field->type()!=value.type){
+//     LOG_ERROR("Invalid value type. table name =%s, field name=%s, type=%d, but given=%d",
+//         table_meta_.name(),
+//         field->name(),
+//         field->type(),
+//         value.type);
+//     return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+//   }
+
+//   size_t copy_len = field->len();
+  
+//   if (field->type() == CHARS) {
+//     const size_t data_len = strlen((const char *)value.data);
+//     if (copy_len > data_len) {
+//       copy_len = data_len + 1;
+//     }
+//   }
+//   memcpy(now_data + field->offset(), value.data, copy_len);
+//   record->set_data(now_data);
+
+
+//   rc = record_handler_->update_record(record);
+//   if (rc != RC::SUCCESS) {
+//     LOG_ERROR("Failed to update record (rid=%d.%d). rc=%d:%s",
+//                 record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+//     return rc;
+//   }
+//   //若行更新成功则维护更新索引
+//   for (Index *index : indexes_){
+//     LOG_INFO("filed_name of index=%s, attribute_name=%s", index->index_meta().field(), attribute_name);
+//     if(0 == strcmp(index->index_meta().field(), attribute_name)){
+//       if(RC::SUCCESS==index->insert_entry(record->data(), &record->rid())){
+//         if(RC::SUCCESS==index->delete_entry(old_data, &record->rid())){
+//           LOG_INFO("Succeed to update index (filed_meta=%s) of record (rid=%d.%d). rc=%d:%s",
+//                 index->index_meta().field(), record->rid().page_num, record->rid().slot_num, rc, strrc(rc));
+//         }
+//       }
+//     }
+//   }
+//   return rc;
+// }
 RC Table::update_record(Trx *trx, const char *attribute_name, const Value *value, int condition_num,
     const Condition conditions[], int *updated_count)
 {

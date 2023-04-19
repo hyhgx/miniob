@@ -32,7 +32,9 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/index_scan_operator.h"
 #include "sql/operator/predicate_operator.h"
 #include "sql/operator/delete_operator.h"
+#include "sql/operator/update_operator.h"
 #include "sql/operator/project_operator.h"
+#include "sql/parser/parse_defs.h"
 #include "sql/stmt/stmt.h"
 #include "sql/stmt/select_stmt.h"
 #include "sql/stmt/update_stmt.h"
@@ -144,7 +146,7 @@ void ExecuteStage::handle_request(common::StageEvent *event)
       do_insert(sql_event);
     } break;
     case StmtType::UPDATE: {
-      //do_update((UpdateStmt *)stmt, session_event);
+      do_update(sql_event);
     } break;
     case StmtType::DELETE: {
       do_delete(sql_event);
@@ -170,8 +172,9 @@ void ExecuteStage::handle_request(common::StageEvent *event)
     case SCF_DESC_TABLE: {
       do_desc_table(sql_event);
     } break;
-
-    case SCF_DROP_TABLE:
+    case SCF_DROP_TABLE:{
+      do_drop_table(sql_event);
+    }break;
     case SCF_DROP_INDEX:
     case SCF_LOAD_DATA: {
       default_storage_stage_->handle_event(event);
@@ -392,6 +395,36 @@ IndexScanOperator *try_to_create_index_scan_operator(FilterStmt *filter_stmt)
   return oper;
 }
 
+RC ExecuteStage::do_update(SQLStageEvent *sql_event){
+  Stmt *stmt = sql_event->stmt();
+  SessionEvent *session_event = sql_event->session_event();
+  Session *session = session_event->session();
+  Db *db = session->get_current_db();
+  Trx *trx = session->current_trx();
+  CLogManager *clog_manager = db->get_clog_manager();
+
+  if (stmt == nullptr) {
+    LOG_WARN("cannot find statement");
+    return RC::GENERIC_ERROR;
+  }
+
+  UpdateStmt *update_stmt = (UpdateStmt *)stmt;
+  Table *table = update_stmt->table();
+
+  TableScanOperator scan_oper(update_stmt->table());
+  PredicateOperator pred_oper(update_stmt->filter_stmt());
+  pred_oper.add_child(&scan_oper);
+  UpdateOperator update_oper(update_stmt, trx);
+  update_oper.add_child(&pred_oper);
+
+  RC rc = update_oper.open();
+  if (rc!= RC::SUCCESS) {
+    session_event->set_response("FAILURE\n");
+  } else {
+    session_event->set_response("SUCCESS\n");
+  }
+return rc;
+}
 RC ExecuteStage::do_select(SQLStageEvent *sql_event)
 {
   SelectStmt *select_stmt = (SelectStmt *)(sql_event->stmt());
@@ -448,7 +481,6 @@ RC ExecuteStage::do_select(SQLStageEvent *sql_event)
   session_event->set_response(ss.str());
   return rc;
 }
-
 RC ExecuteStage::do_help(SQLStageEvent *sql_event)
 {
   SessionEvent *session_event = sql_event->session_event();
@@ -463,7 +495,18 @@ RC ExecuteStage::do_help(SQLStageEvent *sql_event)
   session_event->set_response(response);
   return RC::SUCCESS;
 }
-
+RC ExecuteStage::do_drop_table(SQLStageEvent *sql_event){
+  const DropTable &drop_table=sql_event->query()->sstr.drop_table;
+  SessionEvent *session_event = sql_event->session_event();
+  Db *db = session_event->session()->get_current_db();//得到当前数据库
+  RC rc=db->drop_table(drop_table.relation_name);//需要自己在db类中定义
+  if(rc==RC::SUCCESS){
+    session_event->set_response("SUCCESS\n");
+  }else{
+    session_event->set_response("FAILURE\n");
+  }
+  return rc;
+} 
 RC ExecuteStage::do_create_table(SQLStageEvent *sql_event)
 {
   const CreateTable &create_table = sql_event->query()->sstr.create_table;
@@ -549,8 +592,7 @@ RC ExecuteStage::do_insert(SQLStageEvent *sql_event)
      rc = table->insert_record(trx, insert_stmt->value_amount()[k], insert_stmt->values()[k]);
      if(rc!=RC::SUCCESS){
       break;
-     }
-        
+     }     
   }
   if (rc == RC::SUCCESS) {
     if (!session->is_trx_multi_operation_mode()) {
@@ -566,13 +608,17 @@ RC ExecuteStage::do_insert(SQLStageEvent *sql_event)
         session_event->set_response("FAILURE\n");
         return rc;
       } 
-
       trx->next_current_id();
       session_event->set_response("SUCCESS\n");
     } else {
       session_event->set_response("SUCCESS\n");
     }
   } else {
+
+    for( auto record:table->get_record())
+    {
+      table->delete_record(trx,&record);
+    }
     session_event->set_response("FAILURE\n");
   }
   return rc;

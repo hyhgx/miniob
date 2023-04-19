@@ -48,7 +48,6 @@ public:
 
   Stmt() = default;
   virtual ~Stmt() = default;
-
   virtual StmtType type() const = 0;
 
 public:

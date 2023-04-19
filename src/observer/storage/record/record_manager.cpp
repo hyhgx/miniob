@@ -497,6 +497,7 @@ RC RecordFileScanner::fetch_next_record()
     }
   }
 
+  
   while (bp_iterator_.has_next()) {
     PageNum page_num = bp_iterator_.next();
     record_page_handler_.cleanup();

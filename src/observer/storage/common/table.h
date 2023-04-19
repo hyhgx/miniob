@@ -16,7 +16,8 @@ See the Mulan PSL v2 for more details. */
 #define __OBSERVER_STORAGE_COMMON_TABLE_H__
 
 #include "storage/common/table_meta.h"
-
+#include <vector>
+#include"storage/record/record.h"
 struct RID;
 class Record;
 class DiskBufferPool;
@@ -47,7 +48,7 @@ public:
    */
   RC create(const char *path, const char *name, const char *base_dir, int attribute_count, const AttrInfo attributes[],
       CLogManager *clog_manager);
-
+  RC remove(const char *name);
   /**
    * 打开一个表
    * @param meta_file 保存表元数据的文件完整路径
@@ -55,6 +56,8 @@ public:
    * @param clog_manager clog管理器
    */
   RC open(const char *meta_file, const char *base_dir, CLogManager *clog_manager);
+
+  RC update_record(Trx *trx, Record *record, const char *attribute_name, const Value *values);
 
   RC insert_record(Trx *trx, int value_num, const Value *values);
   RC update_record(Trx *trx, const char *attribute_name, const Value *value, int condition_num,
@@ -115,6 +118,8 @@ public:
   Index *find_index(const char *index_name) const;
   Index *find_index_by_field(const char *field_name) const;
 
+public:
+  std::vector<Record> get_record(){return insert_records;}
 private:
   std::string base_dir_;
   CLogManager *clog_manager_;
@@ -122,6 +127,8 @@ private:
   DiskBufferPool *data_buffer_pool_ = nullptr;   /// 数据文件关联的buffer pool
   RecordFileHandler *record_handler_ = nullptr;  /// 记录操作
   std::vector<Index *> indexes_;
+
+  std::vector<Record> insert_records;
 };
 
 #endif  // __OBSERVER_STORAGE_COMMON_TABLE_H__
